@@ -3,14 +3,14 @@ import random
 
 from gym_env.env import Action
 
-autplay = True  # play automatically if played against keras-rl
+autoplay = True  # play automatically if played against keras-rl
 
 
-class Player:
+class RandomPlayer:
     """Mandatory class with the player methods"""
 
     def __init__(self, name='Random'):
-        """Initiaization of an agent"""
+        """Initialization of an agent"""
         self.equity_alive = 0
         self.actions = []
         self.last_action_in_stage = ''

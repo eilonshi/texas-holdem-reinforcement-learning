@@ -5,11 +5,11 @@ from gym_env.env import Action
 autoplay = True  # play automatically if played against keras-rl
 
 
-class Player:
+class EquityPlayer:
     """Mandatory class with the player methods"""
 
     def __init__(self, name='Random', min_call_equity=None, min_bet_equity=None):
-        """Initiaization of an agent"""
+        """Initialization of an agent"""
         self.equity_alive = 0
         self.name = name
 
@@ -23,19 +23,19 @@ class Player:
         _ = observation
         equity_alive = info['player_data']['equity_to_river_alive']
 
-        incremen1 = .1
+        increment1 = .1
         increment2 = .2
 
         if equity_alive > self.min_bet_equity + increment2 and Action.ALL_IN in action_space:
             action = Action.ALL_IN
 
-        elif equity_alive > self.min_bet_equity + incremen1 and Action.RAISE_2POT in action_space:
+        elif equity_alive > self.min_bet_equity + increment1 and Action.RAISE_2POT in action_space:
             action = Action.RAISE_2POT
 
         elif equity_alive > self.min_bet_equity and Action.RAISE_POT in action_space:
             action = Action.RAISE_POT
 
-        elif equity_alive > self.min_bet_equity - incremen1 and Action.RAISE_HALF_POT in action_space:
+        elif equity_alive > self.min_bet_equity - increment1 and Action.RAISE_HALF_POT in action_space:
             action = Action.RAISE_HALF_POT
 
         elif equity_alive > self.min_call_equity and Action.CALL in action_space:
