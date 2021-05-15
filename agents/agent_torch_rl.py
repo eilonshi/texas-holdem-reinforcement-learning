@@ -1,6 +1,5 @@
 """Player based on a trained neural network, implemented in torch lybrary"""
 import logging
-import agents.dqn_constants as const
 import torch
 from agents.player import Player
 from gym_env.env import HoldemTable
@@ -54,7 +53,6 @@ class DQNTorchPlayer(Player):
         """Initialization of an agent"""
         super().__init__(stack_size, name)
 
-        self.autoplay = const.autoplay
         self.env = env
         self.policy_model = self.build_model(policy_model, DQNPolicyModel)
         self.hand_classifier_model = self.build_model(hand_classifier_model, DQNHandClassifierModel)
@@ -84,6 +82,10 @@ class DQNTorchPlayer(Player):
         logging.log(level=logging.INFO, msg=f'Player: {self.name}\n reward: {reward}\n')
 
     def load_models(self, load_models):
+        # TODO
+        pass
+
+    def train(self):
         # TODO
         pass
 

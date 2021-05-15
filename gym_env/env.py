@@ -118,7 +118,7 @@ class HoldemTable(Env):
 
         return self.current_state
 
-    def step(self, action):  # pylint: disable=arguments-differ
+    def step(self, action):
         """
         Next player makes a move and a new environment is observed.
 
@@ -132,16 +132,7 @@ class HoldemTable(Env):
         # keras-rl
         self.reward = 0
         self.acting_agent = self.player_cycle.idx
-        if self._agent_is_autoplay():
-            while self._agent_is_autoplay() and not self.done:
-                log.debug("Autoplay agent. Call action method of agent.")
-                self._get_environment()
-                # call agent's action method
-                action = self.current_player.agent_obj.action(self.legal_moves, self.observation, self.info)
-                self._execute_step(Action(action))
-
-        else:  # action received from player shell (e.g. keras rl, not autoplay)
-            self._execute_step(Action(action))
+        self._execute_step(Action(action))
 
         return self.current_state, self.reward, self.done, self.info
 

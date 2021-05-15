@@ -62,9 +62,24 @@ class SelfPlay:
     def dqn_train_torch_rl(self):
         """Implementation of torch rl deep q learning train loop."""
 
-        # TODO: save the architectures
+        # TODO: use tensorboard
+        # TODO: look at keras-rl.core to see how they implemented the training loop
 
-        self.dqn_train_game_loop(epochs=self.num_epochs, episodes=self.num_episodes)
+        for epoch in range(self.num_epochs):
+            for episode in range(self.num_episodes):
+                self.create_env()
+                self.env.game_loop()
+
+            # fit the models to the collected data
+            for player in self.env.players:
+                player.train()
+
+            # TODO: save the weights
+            # After training is done, we save the final weights.
+
+            # evaluate the latest agent in a game vs the prev agent and keep the net that won in the evaluation
+            if self.last_agent is not None:
+                self.keep_best_agent(last_agent=self.last_agent, cur_agent=self.cur_agent)
 
     def dqn_play_torch_rl(self):
         pass
@@ -138,31 +153,6 @@ class SelfPlay:
         print("============")
         print(league_table)
         print(f"Best Player: {best_player}")
-
-    def dqn_train_game_loop(self, epochs, episodes):
-
-        # TODO: use tensorboard
-        # TODO: look at keras-rl.core to see how they implemented the training loop
-
-        for epoch in range(epochs):
-            self.create_env()
-
-            for episode in range(episodes):
-                self.env.game_loop()
-
-                # fit the models to the collected data
-                # TODO: uncomment
-                # self.torch_dqn_policy_model.fit()
-                # self.torch_hand_classifier_model.fit()
-
-                # TODO: if self.env.done: break
-
-            # evaluate the latest agent in a game vs the prev agent and keep the net that won in the evaluation
-            if self.last_agent is not None:
-                self.keep_best_agent(last_agent=self.last_agent, cur_agent=self.cur_agent)
-
-        # TODO: save the weights
-        # After training is done, we save the final weights.
 
     def keep_best_agent(self, last_agent, cur_agent):
         best_agent = self.env.evaluate_2_players(last_agent, cur_agent)
