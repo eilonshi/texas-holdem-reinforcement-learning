@@ -118,7 +118,7 @@ class HoldemTable(Env):
 
         return self.current_state
 
-    def step(self, action):
+    def step(self, action: Action):
         """
         Next player makes a move and a new environment is observed.
 
@@ -126,13 +126,25 @@ class HoldemTable(Env):
             action: Used for testing only. Needs to be of Action type
 
         """
-        # loop over step function, calling the agent's action method
-        # until either the env is done, or an agent is just a shell and
-        # will get a call from to the step function externally (e.g. via
-        # keras-rl
+        # loop over step function, calling the agent's action method until either the env is done
         self.reward = 0
         self.acting_agent = self.player_cycle.idx
-        self._execute_step(Action(action))
+
+        if action not in self.legal_moves:
+            self._illegal_move(action)
+        else:
+            self._process_decision(action)
+            self._next_player()
+
+            if self.stage in [Stage.END_HIDDEN, Stage.SHOWDOWN]:
+                self._end_hand()
+                self._start_new_hand()
+
+            self._get_environment()
+
+            if self.first_action_for_hand[self.acting_agent] or self.done:
+                self.first_action_for_hand[self.acting_agent] = False
+                self._calculate_reward()
 
         return self.current_state, self.reward, self.done, self.info
 
@@ -140,8 +152,10 @@ class HoldemTable(Env):
         while not self.done:
             self._get_environment()
             action = self.current_player.act(state=self.observation, legal_actions=self.legal_moves, info=self.info)
-            self.step(action)
-            self.current_player.log_state_for_training(self.current_state, self.reward, self.done, self.info)
+            self.step(Action(action))
+
+            if self.current_player.is_trainable:
+                self.current_player.log_state_for_training(self.current_state, self.reward, self.done, self.info)
 
     def add_player(self, player: Player):
         """Add a player to the table. Has to happen at the very beginning"""
@@ -219,23 +233,6 @@ class HoldemTable(Env):
     def get_relative_observation(self, player, observation):
         # TODO
         pass
-
-    def _execute_step(self, action):
-        if Action(action) not in self.legal_moves:
-            self._illegal_move(action)
-        else:
-            self._process_decision(action)
-            self._next_player()
-
-            if self.stage in [Stage.END_HIDDEN, Stage.SHOWDOWN]:
-                self._end_hand()
-                self._start_new_hand()
-
-            self._get_environment()
-
-            if self.first_action_for_hand[self.acting_agent] or self.done:
-                self.first_action_for_hand[self.acting_agent] = False
-                self._calculate_reward()
 
     def _illegal_move(self, action):
         log.warning(f"{action} is an Illegal move, try again. Currently allowed: {self.legal_moves}")

@@ -56,6 +56,7 @@ class DQNTorchPlayer(Player):
         self.env = env
         self.policy_model = self.build_model(policy_model, DQNPolicyModel)
         self.hand_classifier_model = self.build_model(hand_classifier_model, DQNHandClassifierModel)
+        self.is_trainable = True
 
         self.montecarlo_tree_builder = MonteCarloTreeBuilder(env=self.env,
                                                              policy_model=self.policy_model,

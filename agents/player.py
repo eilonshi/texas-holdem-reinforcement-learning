@@ -164,13 +164,14 @@ class Player(abc.ABC):
         """Initialization of an agent"""
         self.stack = stack_size
         self.last_stack = stack_size
+        self.name = name
         self.seat = None
+        self.agent_obj = None
         self.equity_alive = 0
         self.actions = []
-        self.last_action_in_stage = ''
         self.temp_stack = []
-        self.name = name
-        self.agent_obj = None
+        self.last_action_in_stage = ''
+        self.is_trainable = False
 
     @abc.abstractmethod
     def act(self, state, legal_actions, info=None):
