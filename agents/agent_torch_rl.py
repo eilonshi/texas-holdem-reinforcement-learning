@@ -2,6 +2,7 @@
 import logging
 import torch
 from agents.player import Player
+from gym_env.enums import Action
 from gym_env.env import HoldemTable
 from tools.montecarlo_by_net import MonteCarloTreeBuilder
 
@@ -62,11 +63,12 @@ class DQNTorchPlayer(Player):
                                                              policy_model=self.policy_model,
                                                              hand_classifier_model=self.hand_classifier_model)
 
-    def act(self, state, legal_actions, info=None):
+    def act(self, state, legal_actions, info=None) -> Action:
         """Mandatory method that calculates the move based on the observation array and the action space."""
         policy = self.montecarlo_tree_builder.get_policy()
         action = self.choose_action_by_policy(policy=policy)
-        return action
+
+        return Action(action)
 
     def choose_action_by_policy(self, policy):
         # TODO: choose the best action

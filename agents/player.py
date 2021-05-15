@@ -2,6 +2,8 @@ import numpy as np
 import logging
 import abc
 
+from gym_env.enums import Action
+
 log = logging.getLogger(__name__)
 
 
@@ -174,5 +176,5 @@ class Player(abc.ABC):
         self.is_trainable = False
 
     @abc.abstractmethod
-    def act(self, state, legal_actions, info=None):
+    def act(self, state, legal_actions, info=None) -> Action:
         pass

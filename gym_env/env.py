@@ -3,7 +3,7 @@ import pandas as pd
 from gym import Env
 from gym.spaces import Discrete
 
-from consts import ILLEGAL_MOVE_REWARD
+from consts import ILLEGAL_MOVE_REWARD, DEFAULT_STACK, DEFAULT_SMALL_BLIND, DEFAULT_BIG_BLIND
 from tools.hand_evaluator import get_winner
 from tools.helper import flatten
 from gym_env.rendering import PygletWindow, WHITE, RED, GREEN, BLUE
@@ -29,8 +29,9 @@ class Deck:
 class HoldemTable(Env):
     """Poker game environment"""
 
-    def __init__(self, initial_stacks: int = 100, small_blind: int = 1, big_blind: int = 2, render: bool = False,
-                 funds_plot: bool = True, max_raising_rounds: int = 2, use_cpp_montecarlo: bool = False):
+    def __init__(self, initial_stacks: int = DEFAULT_STACK, small_blind: int = DEFAULT_SMALL_BLIND,
+                 big_blind: int = DEFAULT_BIG_BLIND, render: bool = False, funds_plot: bool = True,
+                 max_raising_rounds: int = 2, use_cpp_montecarlo: bool = False):
         """
         The table needs to be initialized once at the beginning
 
@@ -130,21 +131,21 @@ class HoldemTable(Env):
         self.reward = 0
         self.acting_agent = self.player_cycle.idx
 
-        if action not in self.legal_moves:
-            self._illegal_move(action)
-        else:
-            self._process_decision(action)
-            self._next_player()
+        while action not in self.legal_moves:
+            action = self._illegal_move(action)
 
-            if self.stage in [Stage.END_HIDDEN, Stage.SHOWDOWN]:
-                self._end_hand()
-                self._start_new_hand()
+        self._process_decision(action)
+        self._next_player()
 
-            self._get_environment()
+        if self.stage in [Stage.END_HIDDEN, Stage.SHOWDOWN]:
+            self._end_hand()
+            self._start_new_hand()
 
-            if self.first_action_for_hand[self.acting_agent] or self.done:
-                self.first_action_for_hand[self.acting_agent] = False
-                self._calculate_reward()
+        self._get_environment()
+
+        if self.first_action_for_hand[self.acting_agent] or self.done:
+            self.first_action_for_hand[self.acting_agent] = False
+            self._calculate_reward()
 
         return self.current_state, self.reward, self.done, self.info
 
@@ -152,7 +153,7 @@ class HoldemTable(Env):
         while not self.done:
             self._get_environment()
             action = self.current_player.act(state=self.observation, legal_actions=self.legal_moves, info=self.info)
-            self.step(Action(action))
+            self.step(action)
 
             if self.current_player.is_trainable:
                 self.current_player.log_state_for_training(self.current_state, self.reward, self.done, self.info)
@@ -237,6 +238,13 @@ class HoldemTable(Env):
     def _illegal_move(self, action):
         log.warning(f"{action} is an Illegal move, try again. Currently allowed: {self.legal_moves}")
         self.reward = self.illegal_move_reward
+
+        if self.current_player.is_trainable:
+            self.current_player.log_state_for_training(self.current_state, self.reward, self.done, self.info)
+
+        action = self.current_player.act(state=self.observation, legal_actions=self.legal_moves, info=self.info)
+
+        return action
 
     def _agent_is_autoplay(self, idx=None):
         if not idx:
