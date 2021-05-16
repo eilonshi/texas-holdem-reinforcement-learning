@@ -1,3 +1,5 @@
+from typing import List
+
 import matplotlib.pyplot as plt
 import pandas as pd
 from gym import Env
@@ -10,23 +12,14 @@ from gym_env.rendering import PygletWindow, WHITE, RED, GREEN, BLUE
 from gym_env.enums import *
 from agents.player import *
 from gym_env.stateData import *
+from gym_env.deck import Deck
 
 # pylint: disable=import-outside-toplevel
 
 winner_in_episodes = []
 
 
-class Card:
-    # TODO: add a Card class
-    pass
-
-
-class Deck:
-    # TODO: add a Deck class
-    pass
-
-
-class HoldemTable(Env):
+class HoldemTable(Env, Hand):
     """Poker game environment"""
 
     def __init__(self, initial_stacks: int = DEFAULT_STACK, small_blind: int = DEFAULT_SMALL_BLIND,
@@ -44,6 +37,7 @@ class HoldemTable(Env):
             max_raising_rounds (int): max raises per round per player
 
         """
+        super().__init__()
         if use_cpp_montecarlo:
             import cppimport
             calculator = cppimport.imp("tools.montecarlo_cpp.pymontecarlo")
@@ -56,8 +50,7 @@ class HoldemTable(Env):
         self.small_blind = small_blind
         self.big_blind = big_blind
         self.render_switch = render
-        self.players = []
-        self.table_cards = None
+        self.players: List[Player] = []
         self.dealer_pos = None
         self.player_status = {}  # one hot encoded
         self.current_player = None
@@ -213,7 +206,7 @@ class HoldemTable(Env):
             x_inner = (-face_radius + table_radius - 60) * np.cos(radian) + screen_width / 2
             y_inner = (-face_radius + table_radius - 60) * np.sin(radian) + screen_height / 2
             self.viewer.text(f"${self.player_pots[self.players[i]]}", x_inner, y_inner, font_size=10, color=WHITE)
-            self.viewer.text(f"{self.table_cards}", screen_width / 2 - 40, screen_height / 2, font_size=10,
+            self.viewer.text(f"{self.cards}", screen_width / 2 - 40, screen_height / 2, font_size=10,
                              color=WHITE)
             self.viewer.text(f"${self.community_pot}", screen_width / 2 - 15, screen_height / 2 + 30, font_size=10,
                              color=WHITE)
@@ -276,11 +269,14 @@ class HoldemTable(Env):
             self.current_player = self.players[self.winner_ix]
 
         self.player_data.position = self.current_player.seat
-        self.current_player.equity_alive = self.get_equity(set(self.current_player.cards), set(self.table_cards),
+        self.current_player.equity_alive = self.get_equity(set(self.current_player.cards_str_list()),
+                                                           set(self.cards_str_list()),
                                                            sum(self.player_cycle.alive), 1000)
         self.player_data.equity_to_river_alive = self.current_player.equity_alive
 
         # update state
+        # TODO: add community cards to the state
+        community_cards = self.cards
         player_data = np.array(list(flatten(self.player_data.__dict__.values())))
         community_data = np.array(list(flatten(self.community_data.__dict__.values())))
         stage_data = np.array([list(flatten(sd.__dict__.values())) for sd in self.stage_data]).flatten()
@@ -407,8 +403,8 @@ class HoldemTable(Env):
         log.info("++++++++++++++++++")
         log.info("Starting new hand.")
         log.info("++++++++++++++++++")
-        self.table_cards = []
-        self._create_card_deck()
+        self.clear_cards()
+        self.deck = Deck()
         self.stage = Stage.PREFLOP
 
         # preflop round1,2, flop>: round 1,2, turn etc...
@@ -548,10 +544,10 @@ class HoldemTable(Env):
 
         else:
             assert self.stage == Stage.SHOWDOWN
-            remaining_player_winner_ix, winning_card_type = get_winner([player.cards
+            remaining_player_winner_ix, winning_card_type = get_winner([player.cards_str_list()
                                                                         for ix, player in enumerate(self.players) if
                                                                         potential_winners[ix]],
-                                                                       self.table_cards)
+                                                                       self.cards_str_list())
             winner_ix = potential_winner_idx[remaining_player_winner_ix]
         log.info(f"Player {winner_ix} won: {winning_card_type}")
         return winner_ix
@@ -623,28 +619,29 @@ class HoldemTable(Env):
         self.player_pots = {player: 0 for player in self.players}
         self.played_in_round = 0
 
-    def _create_card_deck(self):
-        values = "23456789TJQKA"
-        suites = "CDHS"
-        self.deck = []  # contains cards in the deck
-        _ = [self.deck.append(x + y) for x in values for y in suites]
+    # def _create_card_deck(self):
+    #     values = "23456789TJQKA"
+    #     suites = "CDHS"
+    #     self.deck = []  # contains cards in the deck
+    #     _ = [self.deck.append(x + y) for x in values for y in suites]
 
     def _distribute_cards(self):
         log.info(f"Dealer is at position {self.dealer_pos}")
-        for player in self.players:
-            player.cards = []
-            if player.stack <= 0:
-                continue
-            for _ in range(2):
-                card = np.random.randint(0, len(self.deck))
-                player.cards.append(self.deck.pop(card))
-            log.info(f"Player {player.seat} got {player.cards} and ${player.stack}")
+        self.deck.deal_2_cards_to_all_players(self.players)
+        # for player in self.players:
+        #     player.cards = []
+        #     if player.stack <= 0:
+        #         continue
+        #     for _ in range(2):
+        #         card = np.random.randint(0, len(self.deck))
+        #         player.cards.append(self.deck.pop(card))
 
     def _distribute_cards_to_table(self, amount_of_cards):
         for _ in range(amount_of_cards):
-            card = np.random.randint(0, len(self.deck))
-            self.table_cards.append(self.deck.pop(card))
-        log.info(f"Cards on table: {self.table_cards}")
+            self.deck.deal_to(self, num_cards=1)
+            # card = np.random.randint(0, len(self.deck))
+            # self.table_cards.append(self.deck.pop(card))
+        log.info(f"Cards on table: {self.cards_str_list()}")
 
     @staticmethod
     def evaluate_2_players(player1: Player, player2: Player) -> Player:

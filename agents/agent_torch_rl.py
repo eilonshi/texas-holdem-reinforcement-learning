@@ -59,13 +59,13 @@ class DQNTorchPlayer(Player):
         self.hand_classifier_model = self.build_model(hand_classifier_model, DQNHandClassifierModel)
         self.is_trainable = True
 
-        self.montecarlo_tree_builder = MonteCarloTreeBuilder(env=self.env,
-                                                             policy_model=self.policy_model,
-                                                             hand_classifier_model=self.hand_classifier_model)
+        self.montecarlo_tree = MonteCarloTreeBuilder(env=self.env,
+                                                     policy_model=self.policy_model,
+                                                     hand_classifier_model=self.hand_classifier_model)
 
     def act(self, state, legal_actions, info=None) -> Action:
         """Mandatory method that calculates the move based on the observation array and the action space."""
-        policy = self.montecarlo_tree_builder.get_policy()
+        policy = self.montecarlo_tree.get_policy()
         action = self.choose_action_by_policy(policy=policy)
 
         return Action(action)

@@ -3,6 +3,7 @@ import logging
 import abc
 
 from gym_env.enums import Action
+from gym_env.deck import Hand
 
 log = logging.getLogger(__name__)
 
@@ -159,11 +160,13 @@ class PlayerCycle:
         return potential_winners
 
 
-class Player(abc.ABC):
+class Player(Hand):
     """Player shell"""
 
     def __init__(self, stack_size: int, name: str):
         """Initialization of an agent"""
+        super().__init__()
+
         self.stack = stack_size
         self.last_stack = stack_size
         self.name = name
