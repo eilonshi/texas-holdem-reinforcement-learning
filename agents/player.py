@@ -54,7 +54,7 @@ class PlayerCycle:
         """Switch to the next player in the round."""
         if sum(np.array(self.can_still_make_moves_in_this_hand) + np.array(self.out_of_cash_but_contributed)) < 2:
             log.debug("Only one player remaining")
-            return False  # only one player remains
+            return None  # only one player remains
 
         self.idx += step
         self.step_counter += step
@@ -63,21 +63,21 @@ class PlayerCycle:
             self.second_round = True
         if self.max_steps_total and (self.step_counter >= self.max_steps_total):
             log.debug("Max steps total has been reached")
-            return False
+            return None
 
         if self.last_raiser:
             raiser_reference = self.last_raiser
             if self.max_steps_after_raiser and (self.step_counter > self.max_steps_after_raiser + raiser_reference):
                 log.debug("max steps after raiser has been reached")
-                return False
+                return None
         elif self.max_steps_after_raiser and \
                 (self.step_counter > self.max_steps_after_big_blind + self.steps_for_blind_betting):
             log.debug("max steps after raiser has been reached")
-            return False
+            return None
 
         if self.checkers == sum(self.alive):
             log.debug("All players checked")
-            return False
+            return None
 
         while True:
             if self.can_still_make_moves_in_this_hand[self.idx]:
@@ -88,9 +88,10 @@ class PlayerCycle:
             self.idx %= len(self.lst)
             if self.max_steps_total and self.step_counter >= self.max_steps_total:
                 log.debug("Max steps total has been reached after jumping some folders")
-                return False
+                return None
 
         self.update_alive()
+
         return self.lst[self.idx]
 
     def next_dealer(self):

@@ -1,24 +1,27 @@
+import logging
 from typing import List
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from gym import Env
 from gym.spaces import Discrete
 
-from consts import ILLEGAL_MOVE_REWARD, DEFAULT_STACK, DEFAULT_SMALL_BLIND, DEFAULT_BIG_BLIND
+from consts import ILLEGAL_MOVE_REWARD, DEFAULT_STACK, DEFAULT_SMALL_BLIND, DEFAULT_BIG_BLIND, \
+    NUM_RUNS_MONTE_CARLO_STRENGTH_SIMULATION, CARDS_IN_FLOP, CARDS_IN_TURN, CARDS_IN_RIVER
+from gym_env.enums import Action, Stage
+from gym_env.stateData import CommunityData, PlayerData, StageData
 from tools.hand_evaluator import get_winner
-from tools.helper import flatten
 from gym_env.rendering import PygletWindow, WHITE, RED, GREEN, BLUE
-from gym_env.enums import *
-from agents.player import *
-from gym_env.stateData import *
-from gym_env.deck import Deck
+from agents.player import Player, PlayerCycle
+from gym_env.deck import Deck, Hand
 
-# pylint: disable=import-outside-toplevel
+log = logging.getLogger(__name__)
 
 winner_in_episodes = []
 
 
+# TODO: split this class
 class HoldemTable(Env, Hand):
     """Poker game environment"""
 
@@ -38,12 +41,14 @@ class HoldemTable(Env, Hand):
 
         """
         super().__init__()
+
         if use_cpp_montecarlo:
             import cppimport
             calculator = cppimport.imp("tools.montecarlo_cpp.pymontecarlo")
             get_equity = calculator.montecarlo
         else:
             from tools.montecarlo_python import get_equity
+
         self.get_equity = get_equity
         self.use_cpp_montecarlo = use_cpp_montecarlo
         self.num_of_players = 0
@@ -56,15 +61,8 @@ class HoldemTable(Env, Hand):
         self.current_player = None
         self.player_cycle = None  # cycle iterator
         self.stage = None
-        self.last_player_pot = None
         self.viewer = None
         self.player_max_win = None  # used for side pots
-        self.second_round = False
-        self.last_caller = None
-        self.last_raiser = None
-        self.raisers = []
-        self.callers = []
-        self.played_in_round = None
         self.min_call = None
         self.community_data = None
         self.player_data = None
@@ -79,7 +77,7 @@ class HoldemTable(Env, Hand):
 
         # pots
         self.community_pot = 0
-        self.current_round_pot = 9
+        self.current_round_pot = 0
         self.player_pots = {}  # individual player pots
 
         self.observation = None
@@ -100,14 +98,14 @@ class HoldemTable(Env, Hand):
         self.info = {}
         self.done = False
         self.funds_history = pd.DataFrame()
-        self.first_action_for_hand = [True] * len(self.players)
+        self.first_action_for_hand = [True] * self.num_of_players
 
         for player in self.players:
             player.stack = self.initial_stacks
 
         self.dealer_pos = 0
-        self.player_cycle = PlayerCycle(self.players, dealer_idx=-1, max_steps_after_raiser=len(self.players) - 1,
-                                        max_steps_after_big_blind=len(self.players))
+        self.player_cycle = PlayerCycle(self.players, dealer_idx=-1, max_steps_after_raiser=self.num_of_players - 1,
+                                        max_steps_after_big_blind=self.num_of_players)
         self._start_new_hand()
 
         return self.current_state
@@ -153,9 +151,9 @@ class HoldemTable(Env, Hand):
 
     def add_player(self, player: Player):
         """Add a player to the table. Has to happen at the very beginning"""
-        self.num_of_players += 1
-        player.seat = len(self.players)  # assign next seat number to player
+        player.seat = self.num_of_players  # assign next seat number to player
         player.stack = self.initial_stacks
+        self.num_of_players += 1
         self.players.append(player)
         self.player_status[player] = True
         self.player_pots[player] = 0
@@ -173,8 +171,8 @@ class HoldemTable(Env, Hand):
         self.viewer.circle(screen_width / 2, screen_height / 2, table_radius, color=BLUE,
                            thickness=0)
 
-        for i in range(len(self.players)):
-            degrees = i * (360 / len(self.players))
+        for i in range(self.num_of_players):
+            degrees = i * (360 / self.num_of_players)
             radian = (degrees * (np.pi / 180))
             x = (face_radius + table_radius) * np.cos(radian) + screen_width / 2
             y = (face_radius + table_radius) * np.sin(radian) + screen_height / 2
@@ -224,10 +222,6 @@ class HoldemTable(Env, Hand):
 
         self.viewer.update()
 
-    def get_relative_observation(self, player, observation):
-        # TODO
-        pass
-
     def _illegal_move(self, action):
         log.warning(f"{action} is an Illegal move, try again. Currently allowed: {self.legal_moves}")
         self.reward = self.illegal_move_reward
@@ -249,40 +243,39 @@ class HoldemTable(Env, Hand):
         if not self.done:
             self._get_legal_moves()
 
+        if self.current_player is None:  # game over
+            self.current_player = self.players[self.winner_ix]
+
         self.observation = None
         self.reward = 0
         self.info = {}
 
-        self.community_data = CommunityData(len(self.players))
+        self.community_data = CommunityData(self.num_of_players)
         self.community_data.community_pot = self.community_pot / self.big_blind
         self.community_data.current_round_pot = self.current_round_pot / self.big_blind
-        self.community_data.small_blind = self.small_blind
-        self.community_data.big_blind = self.big_blind
-        self.community_data.stage[np.minimum(self.stage.value, 3)] = 1  # pylint: disable= invalid-sequence-index
+        self.community_data.stage[self.stage.value] = 1
         self.community_data.legal_moves = [action in self.legal_moves for action in Action]
-        # self.community_data.active_players
+        # TODO: add active players to community data
 
-        self.player_data = PlayerData()
+        self.player_data = PlayerData(self.num_of_players)
         self.player_data.stack = [player.stack / self.big_blind for player in self.players]
-
-        if not self.current_player:  # game over
-            self.current_player = self.players[self.winner_ix]
-
-        self.player_data.position = self.current_player.seat
-        self.current_player.equity_alive = self.get_equity(set(self.current_player.cards_str_list()),
-                                                           set(self.cards_str_list()),
-                                                           sum(self.player_cycle.alive), 1000)
-        self.player_data.equity_to_river_alive = self.current_player.equity_alive
+        self.player_data.current_player_position[self.current_player.seat] = 1
+        self.player_data.equity_to_river_alive = self.get_equity(set(self.current_player.cards_str_list()),
+                                                                 set(self.cards_str_list()),
+                                                                 sum(self.player_cycle.alive),
+                                                                 NUM_RUNS_MONTE_CARLO_STRENGTH_SIMULATION)
 
         # update state
-        # TODO: add community cards to the state
-        community_cards = self.cards
-        player_data = np.array(list(flatten(self.player_data.__dict__.values())))
-        community_data = np.array(list(flatten(self.community_data.__dict__.values())))
-        stage_data = np.array([list(flatten(sd.__dict__.values())) for sd in self.stage_data]).flatten()
-        # arr_legal_only = np.array(self.community_data.legal_moves).flatten()
-        # TODO: improve the state
-        self.current_state = np.concatenate([player_data, community_data, stage_data]).flatten()
+        player_cards = self.current_player.get_cards_encodings()
+        community_cards = self.get_cards_encodings()
+        player_stack = self.current_player.stack
+        stage = self.stage.value
+        stage_data = self.stage_data
+        player_data = self.player_data
+        community_data = self.community_data
+
+        # TODO: check if the state is invariant to player position
+        self.current_state = np.concatenate([player_cards, community_cards]).flatten()
 
         self.observation = self.current_state
         self._get_legal_moves()
@@ -358,6 +351,7 @@ class HoldemTable(Env, Hand):
 
             if contribution > self.min_call:
                 self.player_cycle.mark_raiser()
+                self.min_call = contribution
 
             self.current_player.stack -= contribution
             self.player_pots[self.current_player] += contribution
@@ -367,8 +361,6 @@ class HoldemTable(Env, Hand):
             if self.current_player.stack == 0 and contribution > 0:
                 self.player_cycle.mark_out_of_cash_but_contributed()
 
-            self.min_call = max(self.min_call, contribution)
-
             self.current_player.actions.append(action)
             self.current_player.last_action_in_stage = action.name
             self.current_player.temp_stack.append(self.current_player.stack)
@@ -376,13 +368,10 @@ class HoldemTable(Env, Hand):
             self.player_max_win[self.current_player.seat] += contribution  # side pot
 
             pos = self.player_cycle.idx
-            rnd = self.stage.value + self.second_round
-            self.stage_data[rnd].calls[pos] = action == Action.CALL
-            self.stage_data[rnd].raises[pos] = action in [Action.RAISE_2POT, Action.RAISE_HALF_POT, Action.RAISE_POT]
-            self.stage_data[rnd].min_call_at_action[pos] = self.min_call / self.big_blind
-            self.stage_data[rnd].community_pot_at_action[pos] = self.community_pot / self.big_blind
-            self.stage_data[rnd].contribution[pos] += contribution / self.big_blind
-            self.stage_data[rnd].stack_at_action[pos] = self.current_player.stack / self.big_blind
+            self.stage_data[self.stage.value].add_action_data(pos, action, bet=contribution / self.big_blind)
+            self.stage_data[self.stage.value].players_stack[pos] = self.current_player.stack / self.big_blind
+            self.stage_data[self.stage.value].contribution[pos] += contribution / self.big_blind
+            self.stage_data[self.stage.value].community_pot_at_action[pos] = self.community_pot / self.big_blind
 
         self.player_cycle.update_alive()
 
@@ -407,20 +396,19 @@ class HoldemTable(Env, Hand):
         self.deck = Deck()
         self.stage = Stage.PREFLOP
 
-        # preflop round1,2, flop>: round 1,2, turn etc...
-        self.stage_data = [StageData(len(self.players)) for _ in range(8)]
+        self.stage_data = [StageData(num_players=self.num_of_players)]
 
         # pots
         self.community_pot = 0
         self.current_round_pot = 0
         self.player_pots = {player: 0 for player in self.players}
-        self.player_max_win = [0] * len(self.players)
+        self.player_max_win = [0] * self.num_of_players
         self.last_player_pot = 0
         self.played_in_round = 0
-        self.first_action_for_hand = [True] * len(self.players)
+        self.first_action_for_hand = [True] * self.num_of_players
 
         for player in self.players:
-            player.cards = []
+            player.clear_cards()
 
         self._next_dealer()
 
@@ -482,7 +470,7 @@ class HoldemTable(Env, Hand):
             log.info("")
             log.info("===Round: Stage: PREFLOP")
             # max steps total will be adjusted again at bb
-            self.player_cycle.max_steps_total = len(self.players) * self.max_round_raising + 2
+            self.player_cycle.max_steps_total = self.num_of_players * self.max_round_raising + 2
 
             self._next_player()
             self._process_decision(Action.SMALL_BLIND)
@@ -491,7 +479,7 @@ class HoldemTable(Env, Hand):
             self._next_player()
 
         elif self.stage in [Stage.FLOP, Stage.TURN, Stage.RIVER]:
-            self.player_cycle.max_steps_total = len(self.players) * self.max_round_raising
+            self.player_cycle.max_steps_total = self.num_of_players * self.max_round_raising
 
             self._next_player()
 
@@ -506,18 +494,20 @@ class HoldemTable(Env, Hand):
         self._close_round()
         if self.stage == Stage.PREFLOP:
             self.stage = Stage.FLOP
-            self._distribute_cards_to_table(3)
+            self._distribute_cards_to_table(amount_of_cards=CARDS_IN_FLOP)
 
         elif self.stage == Stage.FLOP:
             self.stage = Stage.TURN
-            self._distribute_cards_to_table(1)
+            self._distribute_cards_to_table(amount_of_cards=CARDS_IN_TURN)
 
         elif self.stage == Stage.TURN:
             self.stage = Stage.RIVER
-            self._distribute_cards_to_table(1)
+            self._distribute_cards_to_table(amount_of_cards=CARDS_IN_RIVER)
 
         elif self.stage == Stage.RIVER:
             self.stage = Stage.SHOWDOWN
+
+        self.stage_data.append(StageData(num_players=self.num_of_players))
 
         log.info("--------------------------------")
         log.info(f"===ROUND: {self.stage} ===")
@@ -619,28 +609,13 @@ class HoldemTable(Env, Hand):
         self.player_pots = {player: 0 for player in self.players}
         self.played_in_round = 0
 
-    # def _create_card_deck(self):
-    #     values = "23456789TJQKA"
-    #     suites = "CDHS"
-    #     self.deck = []  # contains cards in the deck
-    #     _ = [self.deck.append(x + y) for x in values for y in suites]
-
     def _distribute_cards(self):
         log.info(f"Dealer is at position {self.dealer_pos}")
         self.deck.deal_2_cards_to_all_players(self.players)
-        # for player in self.players:
-        #     player.cards = []
-        #     if player.stack <= 0:
-        #         continue
-        #     for _ in range(2):
-        #         card = np.random.randint(0, len(self.deck))
-        #         player.cards.append(self.deck.pop(card))
 
     def _distribute_cards_to_table(self, amount_of_cards):
         for _ in range(amount_of_cards):
             self.deck.deal_to(self, num_cards=1)
-            # card = np.random.randint(0, len(self.deck))
-            # self.table_cards.append(self.deck.pop(card))
         log.info(f"Cards on table: {self.cards_str_list()}")
 
     @staticmethod

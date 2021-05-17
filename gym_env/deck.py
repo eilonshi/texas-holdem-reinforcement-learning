@@ -1,6 +1,10 @@
 import logging
 import random
 
+import numpy as np
+
+from consts import SUITS, RANKS, NUM_SUITS, NUM_RANKS, TOT_COMMUNITY_CARDS, NUM_CARDS_FOR_PLAYER
+
 log = logging.getLogger(__name__)
 
 
@@ -9,36 +13,37 @@ class Card:
     Card class
     """
 
-    RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
-    NUM_RANKS = 13
-    SUITS = ['C', 'D', 'H', 'S']
-    NUM_SUITS = 4
-
     def __init__(self, rank: str, suit: str, face_up=False):
         self._rank = rank
         self._suit = suit
-        self._encoding = [Card.RANKS.index(self._rank), Card.SUITS.index(self._suit)]
+        self._encoding = self.create_encoding()
 
         self._face_up = face_up
 
     def __str__(self):
         return str(self._rank) + str(self._suit)
 
+    def create_encoding(self):
+        encoding = np.zeros([NUM_RANKS, NUM_SUITS])
+        encoding[RANKS.index(self._rank), SUITS.index(self._suit)] = 1
+        return encoding
+
     @property
-    def get_index(self):
+    def get_encoding(self):
         return self._encoding
 
     def open_card(self):
         self._face_up = True
 
+    @staticmethod
+    def get_empty_card_encoding():
+        encoding = np.zeros([NUM_RANKS, NUM_SUITS])
+        return encoding
+
 
 class Hand:
-    def __init__(self, hands=None):
+    def __init__(self):
         self.cards = []
-        if hands is not None:
-            for hand in hands:
-                for card in hand.cards:
-                    self.cards.append(card)
 
     def cards_str(self):
         cards_str = ''
@@ -62,6 +67,15 @@ class Hand:
     def clear_cards(self):
         self.cards = []
 
+    def get_cards_encodings(self):
+        if len(self.cards) == 0:
+            return Card.get_empty_card_encoding()
+
+        cards_encodings = np.asarray([card.get_encoding for card in self.cards])
+        encoding = cards_encodings.sum(axis=0)
+
+        return encoding
+
 
 class Deck:
     """
@@ -75,8 +89,8 @@ class Deck:
     def reset(self):
         self.cards = []
         # create a deck with all the cards
-        for rank in Card.RANKS:
-            for suit in Card.SUITS:
+        for rank in RANKS:
+            for suit in SUITS:
                 card = Card(rank, suit)
                 self.cards.append(card)
         # shuffle the deck
